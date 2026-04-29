@@ -1,0 +1,38 @@
+name: Content Update — Every 2 Hours
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install feedparser requests python-dotenv \
+                      psycopg2-binary google-generativeai
+
+      - name: Run content engine
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CONTENT_DIR: ./content
+        run: python automation/content_engine.py
+
+      - name: Commit generated content
+        run: |
+          git config user.name "IMP Bot"
+          git config user.email "bot@indiamarketpulse.in"
+          git add content/
+          git diff --staged --quiet || git commit -m "Content update $(date +'%Y-%m-%d %H:%M')"
+          git push
