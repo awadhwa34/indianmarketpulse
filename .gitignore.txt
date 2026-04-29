@@ -1,0 +1,10 @@
+.env
+secrets/
+content/article/
+content/_archive/
+content/data/
+__pycache__/
+*.pyc
+*.log
+*.pyc
+.DS_Store
