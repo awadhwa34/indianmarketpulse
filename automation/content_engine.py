@@ -24,24 +24,27 @@ from pathlib import Path
 from typing import Optional
 import feedparser
 import requests
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 
 load_dotenv()
 
+LOG_DIR = Path(__file__).parent.parent / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler("/var/log/imp/engine.log"),
+        logging.FileHandler(LOG_DIR / "engine.log"),
         logging.StreamHandler()
     ]
 )
 log = logging.getLogger("IMP-Engine")
 
-ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
+GEMINI_API_KEY  = os.environ["GEMINI_API_KEY"]
 DATABASE_URL       = os.environ["DATABASE_URL"]          # PostgreSQL connection string
 CONTENT_DIR        = Path(os.environ.get("CONTENT_DIR", "/var/www/indiamarketpulse/content"))
 GA_PROPERTY_ID     = os.environ.get("GA_PROPERTY_ID", "")  # Google Analytics 4 property ID
@@ -250,46 +253,49 @@ def make_slug(headline: str, ts: datetime.datetime) -> str:
 
 # ─── AI ANALYSIS VIA CLAUDE ───────────────────────────────────────────────────
 
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
-def generate_analysis(item: dict) -> Optional[dict]:
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    
+
+def generate_analysis(item: dict):
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+
     prompt = f"""You are a senior Indian equity research analyst.
-    Analyze this news for BSE/NSE market implications.
+Analyze this news for BSE/NSE market implications.
 
-    HEADLINE: {item['title']}
-    SUMMARY: {item.get('summary', '')}
-    SECTOR: {item['sector']}
+HEADLINE: {item['title']}
+SUMMARY: {item.get('summary', '')}
+SECTOR: {item['sector']}
 
-    Return ONLY valid JSON (no markdown, no extra text):
+Return ONLY valid JSON (no markdown, no extra text):
+{{
+  "professional_summary": "3-sentence analyst summary",
+  "sector_outlook": "outlook sentence",
+  "stocks": [
     {{
-    "professional_summary": "3-sentence analyst summary",
-    "sector_outlook": "outlook sentence",
-    "stocks": [
-        {{
-        "name": "Company Name",
-        "ticker": "TICKER.NS",
-        "impact": "BULLISH or BEARISH or NEUTRAL",
-        "confidence": 8,
-        "rationale": "one sentence"
-        }}
-    ],
-    "mutual_funds": [
-        {{
-        "name": "Fund Name",
-        "category": "Fund Category",
-        "impact": "POSITIVE or NEGATIVE or NEUTRAL",
-        "action": "ACCUMULATE or REVIEW or AVOID or HOLD",
-        "rationale": "one sentence"
-        }}
-    ],
-    "key_risk": "biggest risk",
-    "advisor_note": "actionable note"
-    }}"""
+      "name": "Company Name",
+      "ticker": "TICKER.NS",
+      "impact": "BULLISH or BEARISH or NEUTRAL",
+      "confidence": 8,
+      "rationale": "one sentence"
+    }}
+  ],
+  "mutual_funds": [
+    {{
+      "name": "Fund Name",
+      "category": "Fund Category",
+      "impact": "POSITIVE or NEGATIVE or NEUTRAL",
+      "action": "ACCUMULATE or REVIEW or AVOID or HOLD",
+      "rationale": "one sentence"
+    }}
+  ],
+  "key_risk": "biggest risk",
+  "advisor_note": "actionable note"
+}}"""
 
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt
+        )
         raw = response.text.strip()
         if raw.startswith("```"):
             raw = raw.split("```")[1]
